@@ -1,0 +1,5 @@
+.work-root
+__pycache__/
+*.pyc
+*.log
+logs/
