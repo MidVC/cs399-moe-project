@@ -44,8 +44,6 @@ bash run.sh fixed_prompt.py                                   # default prompt
 bash run.sh fixed_prompt.py --prompt "..." --out results/x.jsonl
 ```
 
-Loading the model takes about 2 minutes. Don't press Ctrl-C during loading. If you do, the process can keep running in the background and hold the lock in `run.sh`; `run.sh` now prints a message when that happens.
-
 ### Results
 
 `results/fixed_prompt.jsonl`, two separate runs on watgpu208 (RTX 6000 Ada), 2026-10-22:
@@ -64,13 +62,3 @@ Loading the model takes about 2 minutes. Don't press Ctrl-C during loading. If y
 - Qwen/Qwen3-30B-A3B (bf16, revision `ad44e777`)
 - MoE-Infinity 0.2.2, moe-store 0.2.2, PyTorch 2.11.0+cu128, transformers 5.3.0
 - WATGPU node watgpu208: one NVIDIA RTX 6000 Ada (48 GB), 2 CPUs, 192 GB RAM
-
-### WATGPU notes
-
-- Home (`/u801/...`) is mounted `noexec` on the login node but not on the GPU nodes. Run `setup.sh` and everything else inside `salloc`, not on the login node.
-- `watgpu108` has a broken GPU; exclude it with `-x watgpu108`.
-
-## Changes from moe-setup
-
-- `fixed_prompt.py`, `results/`, and `README.md` are new.
-- `run.sh` takes the script to run as an argument (`bash run.sh fixed_prompt.py`; the default is still `smoke.py`), and prints a message instead of exiting silently when another run holds the lock.
