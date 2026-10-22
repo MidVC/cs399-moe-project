@@ -1,7 +1,6 @@
 # MoE-Infinity fixed-prompt runs (Qwen3-30B-A3B)
 
-Built on the shared setup [w00606/moe-setup](https://github.com/w00606/moe-setup) (commit `df9c58a`).
-Expert-cache code map and logging (steps 1–2): [YuhanWu2004/Moe-cache-logging](https://github.com/YuhanWu2004/Moe-cache-logging).
+Built on the shared setup [w00606/moe-setup](https://github.com/w00606/moe-setup)
 
 ## Step 3: fixed-prompt script
 
@@ -10,20 +9,20 @@ Expert-cache code map and logging (steps 1–2): [YuhanWu2004/Moe-cache-logging]
 | Field | Meaning |
 |---|---|
 | `prompt` | The user prompt |
-| `chat_text` | The prompt after Qwen's chat template is applied (what the model actually sees) |
+| `chat_text` | The prompt after Qwen's chat template is applied |
 | `generated_text` | The model's output |
 | `input_tokens` | Prompt length in tokens, chat template included |
 | `output_tokens` | Number of newly generated tokens |
 | `hit_eos` | Whether generation stopped on the end-of-sequence token rather than the length limit |
-| `latency_s` | Wall time of `model.generate()` (GPU-synchronized, model loading excluded) |
+| `latency_s` | Wall time of `model.generate()` |
 | `gen_settings` | The exact generation settings used |
 
 ### Generation settings
 
 ```python
-max_new_tokens = 16     # matches smoke.py and the step 1-2 logging runs
+max_new_tokens = 16     
 do_sample      = False  # greedy decoding
-temperature    = 1.0    # "no-op" values that override Qwen's sampling defaults
+temperature    = 1.0    # no-op values that override Qwen's sampling defaults
 top_p          = 1.0    # (generation_config.json); ignored when do_sample=False
 top_k          = 0
 num_beams      = 1
