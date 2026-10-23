@@ -1,0 +1,4 @@
+run,request,latency_s,input_tokens,output_tokens,h2d_bytes,accesses,resident_before,resident_after,text
+20261018-011323,r0,5.9661,22,16,40897351680,8554,0,2368,"A GPU, or Graphics Processing Unit, is a specialized electronic circuit designed to rapidly"
+20261018-011323,r1,4.3449,22,16,11881414656,8554,2368,2368,"A GPU, or Graphics Processing Unit, is a specialized electronic circuit designed to rapidly"
+20261018-011323,r2,4.4085,22,16,10352590848,8554,2368,2368,"A GPU, or Graphics Processing Unit, is a specialized electronic circuit designed to rapidly"

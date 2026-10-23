@@ -1,0 +1,198 @@
+diff --git a/core/parallel/expert_dispatcher.cpp b/core/parallel/expert_dispatcher.cpp
+index 00d899d..8f99c4f 100644
+--- a/core/parallel/expert_dispatcher.cpp
++++ b/core/parallel/expert_dispatcher.cpp
+@@ -19,6 +19,87 @@
+ #include "model/model_topology.h"
+ #include "model/moe.h"
+ 
++// ---------------------------------------------------------------------------
++// [expert-cache-log] Structured expert-cache event log.
++// Enabled only when MOE_EXPERT_EVENT_LOG=<path.csv> is set; otherwise every
++// call below is a single branch on a cached bool. CSV columns:
++//   ts_us,event,layer,expert,gpu,bytes,value,extra
++// events: HIT, HIT_PREFETCHED, MISS, EVICT (victim ids), OVERFLOW_LOAD,
++//         H2D_SUBMIT (value = host us spent in SetDevice),
++//         H2D_DONE   (value = GPU ms of the H2D copy, from CUDA timing events),
++//         OVERFLOW_EVICT (transient prefill expert dropped after execution)
++// ---------------------------------------------------------------------------
++#include <cstdio>
++#include <cstdlib>
++#include <deque>
++#include <mutex>
++namespace expert_cache_log {
++struct PendingH2D {
++  cudaEvent_t start, end;
++  int layer, expert, gpu;
++  std::int64_t bytes;
++};
++struct Log {
++  FILE* f = nullptr;
++  std::mutex mu;
++  std::deque<PendingH2D> pending;
++  Log() {
++    const char* path = std::getenv("MOE_EXPERT_EVENT_LOG");
++    if (path != nullptr && path[0] != '\0') {
++      f = std::fopen(path, "w");
++      if (f) std::fprintf(f, "ts_us,event,layer,expert,gpu,bytes,value,extra\n");
++    }
++  }
++  ~Log() {
++    if (f) { Resolve(false); std::fclose(f); }  // never block at exit
++  }
++  static std::int64_t Now() {
++    return std::chrono::duration_cast<std::chrono::microseconds>(
++               std::chrono::system_clock::now().time_since_epoch()).count();
++  }
++  void WriteLocked(const char* ev, long layer, long expert, int gpu,
++                   long long bytes, double value, const char* extra) {
++    std::fprintf(f, "%lld,%s,%ld,%ld,%d,%lld,%.4f,%s\n",
++                 (long long)Now(), ev, layer, expert, gpu, bytes, value,
++                 extra ? extra : "");
++  }
++  void Write(const char* ev, long layer, long expert, int gpu,
++             long long bytes = 0, double value = 0.0,
++             const char* extra = nullptr) {
++    if (!f) return;
++    std::lock_guard<std::mutex> lock(mu);
++    WriteLocked(ev, layer, expert, gpu, bytes, value, extra);
++    Resolve(false);
++  }
++  // Emit H2D_DONE rows for copies whose end event has completed.
++  // Caller must hold mu (or be the destructor).
++  void Resolve(bool block) {
++    while (!pending.empty()) {
++      auto& p = pending.front();
++      if (block) cudaEventSynchronize(p.end);
++      else if (cudaEventQuery(p.end) != cudaSuccess) break;
++      float ms = 0.f;
++      cudaEventElapsedTime(&ms, p.start, p.end);
++      WriteLocked("H2D_DONE", p.layer, p.expert, p.gpu, p.bytes, ms, nullptr);
++      cudaEventDestroy(p.start);
++      cudaEventDestroy(p.end);
++      pending.pop_front();
++    }
++    std::fflush(f);
++  }
++  void Track(cudaEvent_t start, cudaEvent_t end, int layer, int expert,
++             int gpu, std::int64_t bytes) {
++    std::lock_guard<std::mutex> lock(mu);
++    pending.push_back(PendingH2D{start, end, layer, expert, gpu, bytes});
++  }
++};
++inline Log& Get() {
++  static Log log;
++  return log;
++}
++inline bool On() { return Get().f != nullptr; }
++}  // namespace expert_cache_log
++
+ #include <c10/core/ScalarType.h>
+ #include <c10/cuda/CUDAGuard.h>
+ #include <c10/cuda/CUDAStream.h>
+@@ -682,6 +763,11 @@ void ExpertDispatcher::Enqueue(CallArgs& args) {
+     }
+     cache_hit_count_.fetch_add(1, std::memory_order_relaxed);
+     cache_access_count_.fetch_add(1, std::memory_order_relaxed);
++    if (expert_cache_log::On()) {
++      expert_cache_log::Get().Write("HIT", layer_idx, expert_idx, args.gpu_id,
++                                    expert_node->node->byte_size,
++                                    expert_node->node->incache_visit_count);
++    }
+     // transfer_event = nullptr: expert is already on GPU, no H2D wait needed
+ 
+     // module_->SetTensorsFromIds(expert_node->node->tensor_ids);
+@@ -1135,6 +1221,11 @@ void ExpertDispatcher::GPUFetchFunc(int gpu_id) {
+           exec_args.invocation_id = args.invocation_id;
+           cache_hit_count_.fetch_add(1, std::memory_order_relaxed);
+           cache_access_count_.fetch_add(1, std::memory_order_relaxed);
++          if (expert_cache_log::On()) {
++            expert_cache_log::Get().Write("HIT_PREFETCHED", layer_idx,
++                                          expert_idx, gpu_id,
++                                          expert_node->node->byte_size);
++          }
+           exec_args.transfer_event = nullptr;
+           exec_args.pending_counted_down = true;
+           if (manager_enabled_ && kExpertResidencyManager != nullptr) {
+@@ -1153,6 +1244,12 @@ void ExpertDispatcher::GPUFetchFunc(int gpu_id) {
+       }
+ 
+       bool cache_hit = expert_node->node->device.is_cuda();
++      if (expert_cache_log::On()) {
++        expert_cache_log::Get().Write(
++            cache_hit ? "HIT_LATE" : "MISS", layer_idx, expert_idx, gpu_id,
++            expert_node->node->byte_size, (double)cache_sizes_[gpu_id],
++            batch_size > 1 ? "prefill" : "decode");
++      }
+       const bool managed =
+           kExpertResidencyManager && kExpertResidencyManager->PolicyEnabled();
+       ResidencyTicket residency_ticket;
+@@ -1204,6 +1301,12 @@ void ExpertDispatcher::GPUFetchFunc(int gpu_id) {
+           }
+           gpu_overload_[gpu_id].store(true, std::memory_order_release);
+           failure.overload_owned = true;
++          if (expert_cache_log::On()) {
++            expert_cache_log::Get().Write("OVERFLOW_LOAD", layer_idx,
++                                          expert_idx, gpu_id,
++                                          expert_node->node->byte_size,
++                                          (double)cache_sizes_[gpu_id]);
++          }
+         } else {
+           // find the expert in gpu and min incache_visit_count
+           ExpertNodePtr evict_expert_node = FindExpertEvict(gpu_id);
+@@ -1277,6 +1380,15 @@ void ExpertDispatcher::GPUFetchFunc(int gpu_id) {
+           cache_sizes_[gpu_id] += evict_node->byte_size;
+           int64_t evict_layer_idx = evict_expert_node->layer_idx;
+           int64_t evict_expert_idx = evict_expert_node->expert_idx;
++          if (expert_cache_log::On()) {
++            char why[64];
++            std::snprintf(why, sizeof(why), "for_L%ld_E%ld", (long)layer_idx,
++                          (long)expert_idx);
++            expert_cache_log::Get().Write(
++                "EVICT", evict_layer_idx, evict_expert_idx, gpu_id,
++                evict_node->byte_size,
++                (double)evict_node->incache_visit_count, why);
++          }
+ 
+           // std::lock_guard<std::mutex> lock(cache_mutex_[gpu_id]);
+           uint64_t evict_key = (evict_layer_idx << 32) + evict_expert_idx;
+@@ -1301,7 +1413,26 @@ void ExpertDispatcher::GPUFetchFunc(int gpu_id) {
+       }
+ 
+       cudaEvent_t transfer_done = nullptr;
++      cudaEvent_t log_h2d_start = nullptr;
++      const bool log_h2d = expert_cache_log::On() && !cache_hit;
++      const auto log_t0 = expert_cache_log::Log::Now();
++      if (log_h2d) {
++        cudaEventCreate(&log_h2d_start);
++        cudaEventRecord(log_h2d_start, stream);
++      }
+       expert_node->node->SetDevice(device, true, stream, &transfer_done);
++      if (log_h2d) {
++        cudaEvent_t log_h2d_end = nullptr;
++        cudaEventCreate(&log_h2d_end);
++        cudaEventRecord(log_h2d_end, stream);
++        expert_cache_log::Get().Write(
++            "H2D_SUBMIT", layer_idx, expert_idx, gpu_id,
++            expert_node->node->byte_size,
++            (double)(expert_cache_log::Log::Now() - log_t0));
++        expert_cache_log::Get().Track(log_h2d_start, log_h2d_end,
++                                      (int)layer_idx, (int)expert_idx, gpu_id,
++                                      expert_node->node->byte_size);
++      }
+       expert_node->node->incache_visit_count += 1;
+       expert_node->SetTensorsFromBlob(device);
+       // module_->SetTensorsFromIds(expert_node->node->tensor_ids);
+@@ -2179,6 +2310,12 @@ void ExpertDispatcher::RetirementFunc() {
+   while (retirement_queue_.Pop(args)) {
+     try {
+       if (args.evict) {
++        if (expert_cache_log::On()) {
++          expert_cache_log::Get().Write(
++              "OVERFLOW_EVICT", args.expert_node->layer_idx,
++              args.expert_node->expert_idx, args.gpu_id,
++              args.expert_node->node->byte_size);
++        }
+         args.expert_node->node->SetDevice(args.expert_node->node->default_host,
+                                           true, nullptr);
+         gpu_overload_[args.gpu_id].store(false, std::memory_order_release);
