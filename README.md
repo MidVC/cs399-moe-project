@@ -1,6 +1,25 @@
-# MoE-Infinity fixed-prompt runs (Qwen3-30B-A3B)
+# MoE-Infinity expert-cache experiments (Qwen3-30B-A3B)
 
-Built on the shared setup [w00606/moe-setup](https://github.com/w00606/moe-setup)
+Group repo for the CS399 MoE expert-cache project. It combines:
+
+- [YuhanWu2004/Moe-cache-logging](https://github.com/YuhanWu2004/Moe-cache-logging) (steps 1–2), in `moe-cache-logging/`
+- [brKhoo/moe-experiments](https://github.com/brKhoo/moe-experiments) (step 3), at the repo root
+
+Both build on the shared setup [w00606/moe-setup](https://github.com/w00606/moe-setup). The git history of both source repos is kept.
+
+## Layout
+
+| Path | Step | What it is |
+|---|---|---|
+| `setup.sh`, `run.sh`, `smoke.py`, `*.lock` | — | Shared environment setup from `w00606/moe-setup` |
+| `moe-cache-logging/` | 1–2 | Code map of expert residency, loading and eviction in MoE-Infinity, plus the cache loggers. See [its README](moe-cache-logging/README.md). |
+| `moe-cache-logging/logs/` | 1–2 | Sample logging run `20261018-011323` |
+| `fixed_prompt.py` | 3 | Fixed-prompt script (below) |
+| `results/` | 3 | Step 3 results |
+
+Steps 4 and 5 will be added here.
+
+`run.sh` and `moe-cache-logging/run_logged.sh` both read the work root from `.work-root` in the repo root, which `setup.sh` writes. `run_logged.sh` expects to sit one folder below `run.sh`, as it does here.
 
 ## Step 3: fixed-prompt script
 
