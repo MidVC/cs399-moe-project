@@ -1,0 +1,63 @@
+Results: /u801/lspinoti/cs399-moe-project/latency-variance/results/across-1654577  (5 processes, 100 requests)
+
+1. Sanity checks
+  prompt: 'Explain what a GPU is in one sentence.'
+  input_tokens=[22] output_tokens=[16] distinct generated texts=4
+  nodes=['watgpu802'] cpus=['4'] jobs=['1654577']
+  cache capacity (max resident experts) per process: proc1=2264, proc2=2198, proc3=2198, proc4=2198, proc5=2198
+      87x 'A GPU, or Graphics Processing Unit, is a specialized electronic circuit designed to rapidly'  (proc/req: 1/0 1/1 1/2 1/3 1/5 1/6 1/7 1/8 1/9 1/10)
+      11x 'A GPU (Graphics Processing Unit) is a specialized electronic circuit designed to rapidly manipulate'  (proc/req: 1/4 2/9 2/11 3/11 3/15 3/18 4/0 4/1 5/6 5/7)
+       1x 'A GPU (Graphics Processing Unit) is a specialized type of processor designed to efficiently'  (proc/req: 1/15)
+       1x 'A GPU, or Graphics Processing Unit, is a specialized processor designed to rapidly manipulate'  (proc/req: 2/0)
+
+2. Latency distribution (seconds)
+  group            n  median    mean     sd  cv %     min      p5     p95     max
+  all            100   4.388   4.603  1.007  21.9   4.164   4.229   4.751   8.994
+  cold (req 0)     5   8.965   8.960  0.040   0.4   8.894   8.907   8.992   8.994
+  warm (req 1+)   95   4.385   4.374  0.078   1.8   4.164   4.229   4.494   4.533
+  warm (req 2+)   90   4.384   4.372  0.078   1.8   4.164   4.229   4.484   4.533
+    proc01 warm   19   4.292   4.282  0.060   1.4   4.164   4.206   4.378   4.403
+    proc02 warm   19   4.439   4.414  0.069   1.6   4.293   4.297   4.508   4.510
+    proc03 warm   19   4.376   4.384  0.067   1.5   4.291   4.294   4.482   4.530
+    proc04 warm   19   4.419   4.425  0.045   1.0   4.367   4.376   4.529   4.533
+    proc05 warm   19   4.376   4.366  0.057   1.3   4.256   4.258   4.431   4.466
+
+3. Warm latency: within vs between processes
+  mean within-process sd = 0.060 s
+  sd of process means    = 0.057 s  (range 4.282-4.425)
+
+4. By request index (mean over processes)
+   req  n latency s     min     max  misses  H2D GiB pf miss  pf ms dec miss dec ms
+     0  5     8.960   8.894   8.994    4132    39.19    2794   4553     1338    518
+     1  5     4.409   4.307   4.529    1465    12.87     934   2148      530    484
+     2  5     4.394   4.288   4.533    1340    11.78    1121   2456      219    471
+     3  5     4.297   4.164   4.424    1239    10.89    1154   2485       86    463
+     4  5     4.335   4.258   4.453    1235    10.86    1172   2535       63    462
+     5  5     4.332   4.272   4.419    1219    10.71    1181   2555       38    460
+     6  5     4.337   4.229   4.434    1239    10.89    1187   2544       52    462
+     7  5     4.336   4.291   4.391    1233    10.83    1192   2551       41    461
+     8  5     4.361   4.229   4.466    1229    10.80    1206   2591       23    461
+     9  5     4.378   4.210   4.507    1253    11.02    1209   2592       45    462
+    10  5     4.352   4.229   4.416    1238    10.88    1217   2586       22    461
+    11  5     4.413   4.296   4.530    1273    11.18    1217   2621       55    463
+    12  5     4.364   4.224   4.460    1251    10.99    1227   2594       24    462
+    13  5     4.375   4.295   4.439    1241    10.91    1229   2617       12    461
+    14  5     4.362   4.270   4.451    1240    10.90    1230   2605       10    461
+    15  5     4.426   4.387   4.488    1286    11.30    1231   2626       56    463
+    16  5     4.427   4.376   4.478    1272    11.18    1246   2656       26    462
+    17  5     4.393   4.341   4.452    1262    11.09    1248   2630       14    462
+    18  5     4.413   4.296   4.510    1264    11.11    1249   2646       15    465
+    19  5     4.406   4.254   4.476    1261    11.08    1251   2652       10    460
+  (pf/dec ms = summed MoE-layer wall time; layers are not CUDA-synchronized, so approximate)
+
+5. What tracks warm latency (requests 1+)
+  variable              mean        sd  corr w/ latency  latency per unit
+  misses             1265.34     71.59            0.659        0.716 ms/miss
+  h2d_bytes            11.12      0.63            0.659        0.081 s/GiB
+  prefill_misses     1194.69     79.88            0.319        0.310 ms/miss
+  decode_misses        70.64    123.11            0.176        0.111 ms/miss
+  prefill_ms         2562.70    129.79            0.421        0.252 s/s
+  decode_ms           463.53      6.23            0.228        2.849 s/s
+  output_tokens        16.00      0.00              nan          nan s/token
+  resident_before    2211.20     26.54           -0.595       -1.743 ms/expert
+  (corr is nan when the variable never changes)
