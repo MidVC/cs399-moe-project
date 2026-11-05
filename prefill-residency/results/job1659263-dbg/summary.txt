@@ -1,0 +1,25 @@
+Prefill-residency results: prefill-residency/results/job1659263-dbg
+
+Each sequence: victim runs fully, then (optionally) the attacker, then the
+victim's prefill is re-run as a probe. Probe HIT = that victim expert is still
+resident; probe MISS = it was evicted. Counts are summed over the 48 layers.
+
+Victim-expert survival (probe prefill):
+  sequence victim              attacker trials  accesses  survived  evicted  survived %
+  AvA           AA control (no attacker)      2      2794      1844      950       66.0%
+  AvBp          A             B prefill      2      2794      1877      917       67.2%
+  BvB           BB control (no attacker)      2      2674      1954      720       73.1%
+  BvAp          B             A prefill      2      2674      1924      750       72.0%
+
+Attacker's marginal effect (vs the same victim's no-attacker control):
+  victim A, attacker B prefill          survived 1877 vs 1844 (control): attacker evicted -33 more of the victim's experts (-1.2% of its 2794-expert prefill set)
+  victim B, attacker A prefill          survived 1924 vs 1954 (control): attacker evicted 30 more of the victim's experts (1.1% of its 2674-expert prefill set)
+
+(No resident-set snapshots: the engine did not expose a way to list resident
+ experts, so survival is from the reload probe above. See api lines in driver.log.)
+
+Shared-vs-unique survival (per-expert debug log):
+  AvBp tr1: victim prefill set=3362. Attacker prefill hit 1536/2674 experts already resident (1536 of them victim's). Probe: survived 1477/2324 shared + 432/1038 victim-unique
+  AvBp tr2: victim prefill set=3362. Attacker prefill hit 1482/2674 experts already resident (1482 of them victim's). Probe: survived 1423/2324 shared + 422/1038 victim-unique
+  BvAp tr1: victim prefill set=3141. Attacker prefill hit 1682/2794 experts already resident (1682 of them victim's). Probe: survived 1583/2385 shared + 340/756 victim-unique
+  BvAp tr2: victim prefill set=3128. Attacker prefill hit 1666/2794 experts already resident (1666 of them victim's). Probe: survived 1572/2375 shared + 352/753 victim-unique
